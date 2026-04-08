@@ -6,7 +6,8 @@ the MemoryProvider ABC.
 
 Memory providers are separate from the general plugin system — they live
 in the repo and are always available without user installation. Only ONE
-can be active at a time, selected via ``memory.provider`` in config.yaml.
+can be active at a time, selected via ``memory.provider`` in config.yaml
+(for example ``honcho``, ``mem0``, ``powermem``).
 
 Usage:
     from plugins.memory import discover_memory_providers, load_memory_provider

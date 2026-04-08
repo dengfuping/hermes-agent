@@ -1,0 +1,5 @@
+name: powermem
+version: 1.0.0
+description: "PowerMem long-term memory — hybrid vector/full-text/graph retrieval with LLM extraction (OceanBase SeekDB-friendly)."
+pip_dependencies:
+  - powermem

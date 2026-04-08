@@ -1,12 +1,12 @@
 ---
 sidebar_position: 4
 title: "Memory Providers"
-description: "External memory provider plugins — Honcho, OpenViking, Mem0, Hindsight, Holographic, RetainDB, ByteRover, Supermemory"
+description: "External memory provider plugins — Honcho, OpenViking, Mem0, PowerMem, Hindsight, Holographic, RetainDB, ByteRover, Supermemory"
 ---
 
 # Memory Providers
 
-Hermes Agent ships with 8 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
+Hermes Agent ships with 9 external memory provider plugins that give the agent persistent, cross-session knowledge beyond the built-in MEMORY.md and USER.md. Only **one** external provider can be active at a time — the built-in memory is always active alongside it.
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ Or set manually in `~/.hermes/config.yaml`:
 
 ```yaml
 memory:
-  provider: openviking   # or honcho, mem0, hindsight, holographic, retaindb, byterover, supermemory
+  provider: openviking   # or honcho, mem0, powermem, hindsight, holographic, retaindb, byterover, supermemory
 ```
 
 ## How It Works
@@ -261,6 +261,54 @@ echo "MEM0_API_KEY=your-key" >> ~/.hermes/.env
 
 ---
 
+### PowerMem
+
+Hybrid long-term memory (vector + full-text + optional graph) via the [PowerMem Python SDK](https://github.com/oceanbase/powermem), with LLM-assisted extraction on add. Storage and LLM/embedder backends are **your** PowerMem config (e.g. local SQLite, or OceanBase / SeekDB for production).
+
+| | |
+|---|---|
+| **Best for** | Rich retrieval and consolidation when you already run or plan PowerMem-compatible backends |
+| **Requires** | `pip install 'hermes-agent[powermem]'` (or `pip install powermem`) + a valid PowerMem stack (`vector_store`, `llm`, `embedder` per upstream `validate_config`) |
+| **Data storage** | Whatever you configure (local SQLite, embedded SeekDB, etc. — see PowerMem docs) |
+| **Cost** | Depends on chosen LLM/embedder and vector backends (local stacks can be free aside from API usage) |
+
+**Tools:** `powermem_search` (semantic / hybrid search), `powermem_add` (store text; optional intelligent extraction), `powermem_profile` (list memories for the scoped user)
+
+**Setup:**
+```bash
+pip install 'hermes-agent[powermem]'
+# Generate a starter config (upstream CLI):
+#   pmem config init
+hermes memory setup    # select "powermem"
+# Or manually:
+hermes config set memory.provider powermem
+```
+
+Put API keys and provider env vars in `$HERMES_HOME/.env` (same pattern as Mem0). Hermes loads that directory, then merges optional JSON on top of PowerMem’s env-derived defaults.
+
+**Config (Hermes):**
+
+| File | Purpose |
+|------|---------|
+| `$HERMES_HOME/.env` | Keys and env vars consumed by PowerMem `auto_config()` |
+| `$HERMES_HOME/powermem.json` | Merged **over** auto-derived config (vector store, LLM, embedder, etc.) |
+| `$HERMES_HOME/powermem-hermes.json` | Optional Hermes-only overrides — e.g. `agent_id` to override the default `hermes-{profile}` |
+
+**Identifiers (runtime):**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `user_id` | `hermes-user` | Overridden by gateway `user_id` when present |
+| `agent_id` | `hermes-{profile}` | Overridable via `powermem-hermes.json` `agent_id` |
+
+**Notes:**
+- `is_available()` requires the `powermem` package **and** a config that passes PowerMem’s `validate_config()` (install alone is not enough).
+- Cron / non-primary agent contexts disable writes to avoid polluting user memory (same idea as other providers).
+
+See [PowerMem](https://github.com/oceanbase/powermem) for full configuration, `pmem config init`, and backend options.
+
+---
+
 ### Hindsight
 
 Long-term memory with knowledge graph, entity resolution, and multi-strategy retrieval. The `hindsight_reflect` tool provides cross-memory synthesis that no other provider offers.
@@ -451,6 +499,7 @@ echo 'SUPERMEMORY_API_KEY=***' >> ~/.hermes/.env
 | **Honcho** | Cloud | Paid | 4 | `honcho-ai` | Dialectic user modeling |
 | **OpenViking** | Self-hosted | Free | 5 | `openviking` + server | Filesystem hierarchy + tiered loading |
 | **Mem0** | Cloud | Paid | 3 | `mem0ai` | Server-side LLM extraction |
+| **PowerMem** | Configurable | Varies | 3 | `powermem` | Hybrid retrieval + optional graph (SeekDB-friendly) |
 | **Hindsight** | Cloud/Local | Free/Paid | 3 | `hindsight-client` | Knowledge graph + reflect synthesis |
 | **Holographic** | Local | Free | 2 | None | HRR algebra + trust scoring |
 | **RetainDB** | Cloud | $20/mo | 5 | `requests` | Delta compression |
@@ -462,7 +511,7 @@ echo 'SUPERMEMORY_API_KEY=***' >> ~/.hermes/.env
 Each provider's data is isolated per [profile](/docs/user-guide/profiles):
 
 - **Local storage providers** (Holographic, ByteRover) use `$HERMES_HOME/` paths which differ per profile
-- **Config file providers** (Honcho, Mem0, Hindsight, Supermemory) store config in `$HERMES_HOME/` so each profile has its own credentials
+- **Config file providers** (Honcho, Mem0, PowerMem, Hindsight, Supermemory) store config in `$HERMES_HOME/` so each profile has its own credentials
 - **Cloud providers** (RetainDB) auto-derive profile-scoped project names
 - **Env var providers** (OpenViking) are configured via each profile's `.env` file
 

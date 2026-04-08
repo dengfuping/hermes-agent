@@ -216,6 +216,8 @@ The registry handles schema collection, dispatch, availability checking, and err
 
 **Agent-level tools** (todo, memory): intercepted by `run_agent.py` before `handle_function_call()`. See `todo_tool.py` for the pattern.
 
+**Memory provider plugins** (`plugins/memory/<name>/`): implement `MemoryProvider` and `register(ctx)`; activate with `memory.provider` in `config.yaml`. Shipped examples include Mem0, Hindsight, Honcho, and PowerMem (`powermem` — install `hermes-agent[powermem]`, configure per [PowerMem](https://github.com/oceanbase/powermem) docs).
+
 ---
 
 ## Adding Configuration

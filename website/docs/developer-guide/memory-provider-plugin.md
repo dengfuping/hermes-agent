@@ -19,6 +19,8 @@ plugins/memory/my-provider/
 └── README.md        # Setup instructions, config reference, tools
 ```
 
+Shipped examples: `honcho/` (also ships `cli.py`), `mem0/`, `powermem/`, `supermemory/`, `holographic/`, etc. — each with a `README.md` beside the implementation.
+
 ## The MemoryProvider ABC
 
 Your plugin implements the `MemoryProvider` abstract base class from `agent/memory_provider.py`:
@@ -238,6 +240,8 @@ def register_cli(subparser) -> None:
 ### Reference implementation
 
 See `plugins/memory/honcho/cli.py` for a full example with 13 subcommands, cross-profile management (`--target-profile`), and config read/write.
+
+Providers without a dedicated CLI (only `hermes memory setup`) follow the Mem0 / PowerMem pattern: `register()` in `__init__.py`, `plugin.yaml`, and `README.md` — see `plugins/memory/mem0/README.md` and `plugins/memory/powermem/README.md`.
 
 ### Directory structure with CLI
 
