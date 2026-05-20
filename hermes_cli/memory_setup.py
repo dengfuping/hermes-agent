@@ -10,6 +10,7 @@ from __future__ import annotations
 import getpass
 import os
 import sys
+import shlex
 from pathlib import Path
 
 from hermes_constants import get_hermes_home
@@ -58,16 +59,18 @@ def _prompt(label: str, default: str | None = None, secret: bool = False) -> str
 def _install_dependencies(provider_name: str) -> None:
     """Install pip dependencies declared in plugin.yaml."""
     import subprocess
-    from pathlib import Path as _Path
+    from plugins.memory import find_provider_dir
 
-    plugin_dir = _Path(__file__).parent.parent / "plugins" / "memory" / provider_name
+    plugin_dir = find_provider_dir(provider_name)
+    if not plugin_dir:
+        return
     yaml_path = plugin_dir / "plugin.yaml"
     if not yaml_path.exists():
         return
 
     try:
         import yaml
-        with open(yaml_path) as f:
+        with open(yaml_path, encoding="utf-8") as f:
             meta = yaml.safe_load(f) or {}
     except Exception:
         return
@@ -132,7 +135,7 @@ def _install_dependencies(provider_name: str) -> None:
         if check_cmd:
             try:
                 subprocess.run(
-                    check_cmd, shell=True, capture_output=True, timeout=5
+                    shlex.split(check_cmd), check=True, capture_output=True, timeout=5
                 )
             except Exception:
                 if install_cmd:
@@ -324,6 +327,9 @@ def cmd_setup(args) -> None:
                 val = _prompt(desc, default=str(effective_default) if effective_default else None)
                 if val:
                     provider_config[key] = val
+                    # Also write to .env if this field has an env_var
+                    if env_var and env_var not in env_writes:
+                        env_writes[env_var] = val
 
     # Write activation key to config.yaml
     config["memory"]["provider"] = name
@@ -356,7 +362,7 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
 
     existing_lines = []
     if env_path.exists():
-        existing_lines = env_path.read_text().splitlines()
+        existing_lines = env_path.read_text(encoding="utf-8").splitlines()
 
     updated_keys = set()
     new_lines = []
@@ -372,7 +378,13 @@ def _write_env_vars(env_path: Path, env_writes: dict) -> None:
         if key not in updated_keys:
             new_lines.append(f"{key}={val}")
 
-    env_path.write_text("\n".join(new_lines) + "\n")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    # Restrict permissions — .env holds API keys and tokens.
+    try:
+        import stat
+        env_path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
+    except OSError:
+        pass  # Windows or read-only FS
 
 
 # ---------------------------------------------------------------------------
@@ -409,12 +421,13 @@ def cmd_status(args) -> None:
                     else:
                         print(f"  Status:    not available ✗")
                         schema = p.get_config_schema() if hasattr(p, "get_config_schema") else []
-                        secrets = [f for f in schema if f.get("secret")]
-                        if secrets:
+                        # Check all fields that have env_var (both secret and non-secret)
+                        required_fields = [f for f in schema if f.get("env_var")]
+                        if required_fields:
                             print(f"  Missing:")
-                            for s in secrets:
-                                env_var = s.get("env_var", "")
-                                url = s.get("url", "")
+                            for f in required_fields:
+                                env_var = f.get("env_var", "")
+                                url = f.get("url", "")
                                 is_set = bool(os.environ.get(env_var))
                                 mark = "✓" if is_set else "✗"
                                 line = f"    {mark} {env_var}"

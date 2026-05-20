@@ -23,7 +23,6 @@ Design:
 - Frozen snapshot pattern: system prompt is stable, tool responses show live state
 """
 
-import fcntl
 import json
 import logging
 import os
@@ -33,6 +32,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from hermes_constants import get_hermes_home
 from typing import Dict, Any, List, Optional
+
+from utils import atomic_replace
+
+# fcntl is Unix-only; on Windows use msvcrt for file locking
+msvcrt = None
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    try:
+        import msvcrt
+    except ImportError:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -139,12 +151,31 @@ class MemoryStore:
         """
         lock_path = path.with_suffix(path.suffix + ".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        fd = open(lock_path, "w")
+
+        if fcntl is None and msvcrt is None:
+            yield
+            return
+
+        fd = open(lock_path, "a+", encoding="utf-8")
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+            if fcntl:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            else:
+                fd.seek(0)
+                msvcrt.locking(fd.fileno(), msvcrt.LK_LOCK, 1)
             yield
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            if fcntl:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                except (OSError, IOError):
+                    pass
+            elif msvcrt:
+                try:
+                    fd.seek(0)
+                    msvcrt.locking(fd.fileno(), msvcrt.LK_UNLCK, 1)
+                except (OSError, IOError):
+                    pass
             fd.close()
 
     @staticmethod
@@ -260,7 +291,7 @@ class MemoryStore:
 
             if len(matches) > 1:
                 # If all matches are identical (exact duplicates), operate on the first one
-                unique_texts = set(e for _, e in matches)
+                unique_texts = {e for _, e in matches}
                 if len(unique_texts) > 1:
                     previews = [e[:80] + ("..." if len(e) > 80 else "") for _, e in matches]
                     return {
@@ -310,7 +341,7 @@ class MemoryStore:
 
             if len(matches) > 1:
                 # If all matches are identical (exact duplicates), remove the first one
-                unique_texts = set(e for _, e in matches)
+                unique_texts = {e for _, e in matches}
                 if len(unique_texts) > 1:
                     previews = [e[:80] + ("..." if len(e) > 80 else "") for _, e in matches]
                     return {
@@ -419,7 +450,7 @@ class MemoryStore:
                     f.write(content)
                     f.flush()
                     os.fsync(f.fileno())
-                os.replace(tmp_path, str(path))  # Atomic on same filesystem
+                atomic_replace(tmp_path, path)
             except BaseException:
                 # Clean up temp file on any failure
                 try:
@@ -446,7 +477,7 @@ def memory_tool(
     if store is None:
         return tool_error("Memory is not available. It may be disabled in config or this environment.", success=False)
 
-    if target not in ("memory", "user"):
+    if target not in {"memory", "user"}:
         return tool_error(f"Invalid target '{target}'. Use 'memory' or 'user'.", success=False)
 
     if action == "add":
